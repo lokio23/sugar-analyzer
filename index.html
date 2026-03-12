@@ -985,13 +985,24 @@ ICUMSA 1200+ — VHP/VVHP Raw:
   Crystal size: 1.0-1.5 mm | Coarse, rough surfaces
   Visual: Dark brown, matte finish. Visible molasses coating. Dark amber/brown dissolved.
 
+=== CRITICAL: COLOR SCRUTINY RULES ===
+You MUST be extremely strict and skeptical about color. This is the #1 source of grading errors and fraud.
+- TRUE ICUMSA 45 is BRILLIANT, SPARKLING, PURE WHITE — like fresh snow under direct light. There must be ZERO cream, ivory, off-white, warm, or yellowish tone. If you see ANY warmth or off-white tint, it is NOT a 45.
+- The difference between 45 and 100 is subtle but critical: 45 has zero tint, 100 has a barely perceptible warmth visible only in side-by-side comparison. If there is ANY doubt about whether you see a tint, downgrade to 100 or lower.
+- If the sugar looks "white but not brilliant" or "white but slightly warm/soft" — that is 100 at best, possibly 150.
+- When NO grade is declared, default to being skeptical — assume you are being asked to verify, not confirm. Grade conservatively.
+- When a grade IS declared, your job is to challenge it. Look for reasons it might NOT match.
+- Lighting in photos can mask subtle color: warm lighting makes sugar look whiter than it is. If the photo has warm/yellow lighting, note this and factor it into your confidence score (lower confidence, not higher grade).
+- Confidence scores should reflect uncertainty: if color is borderline, visual_confidence should be 60-75%, not 85%+.
+
 === FRAUD & MISLABELING DETECTION ===
 Watch for these red flags and ALWAYS flag them:
-- ICUMSA 150 sold as 45: Look for cream tint, duller sparkle, straw-colored dissolved solution
+- ICUMSA 150 sold as 45: Look for cream tint, duller sparkle, straw-colored dissolved solution. This is the MOST COMMON fraud in international sugar trade.
 - Mixed-grade batches: Inconsistent crystal sizes (multiple populations), color variation within sample
 - Reprocessed/rebagged sugar: Broken/fragmented crystals, excess sugar dust, moisture pockets in otherwise dry batch, non-uniform crystal damage
-- If declared grade is 45 but visual shows ANY cream/off-white tone → WARN or FAIL with fraud flag
+- If visual shows ANY cream/off-white tone → WARN with grade mismatch flag, regardless of declared grade
 - If crystal sizes vary significantly across the sample → flag possible blending
+- ALWAYS recommend dissolved solution test (10% in distilled water) when visual grade is borderline between two grades
 
 === ORIGIN-SPECIFIC QUALITY PROFILES ===
 ${origin ? `Origin declared: ${origin}. Apply these origin-specific expectations:
