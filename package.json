@@ -1,0 +1,14 @@
+{
+  "name": "sugar-analyzer",
+  "version": "1.0.0",
+  "description": "SugarScope — AI-powered ICUMSA sugar quality analyzer by Erber Studio",
+  "main": "index.js",
+  "scripts": {
+    "start": "npx serve public",
+    "dev": "npx serve public --listen 3000"
+  },
+  "keywords": ["sugar", "ICUMSA", "quality", "inspection", "erber-studio"],
+  "author": "Erber Studio LLC",
+  "license": "UNLICENSED",
+  "private": true
+}
