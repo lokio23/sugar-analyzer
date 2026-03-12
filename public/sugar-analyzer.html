@@ -729,6 +729,11 @@
     <div class="panel">
       <div class="panel-label">02 // Known Parameters</div>
       <div class="input-group">
+        <label class="input-label">Anthropic API Key</label>
+        <input type="password" id="api-key" placeholder="sk-ant-..." autocomplete="off">
+        <div style="font-family:var(--mono);font-size:9px;color:var(--text-dim);margin-top:4px;letter-spacing:0.05em;">Stored locally in your browser only</div>
+      </div>
+      <div class="input-group">
         <label class="input-label">Declared Grade</label>
         <select id="declared-grade">
           <option value="">— Unknown / Not Declared —</option>
@@ -846,6 +851,10 @@
 let imageBase64 = null;
 let imageType = null;
 
+// Restore saved API key
+const savedKey = localStorage.getItem('sugarscope-api-key');
+if (savedKey) document.getElementById('api-key').value = savedKey;
+
 // DRAG & DROP
 const zone = document.getElementById('upload-zone');
 zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
@@ -879,6 +888,13 @@ function loadImage(file) {
 }
 
 async function analyze() {
+  const apiKey = document.getElementById('api-key').value.trim();
+  if (!apiKey) {
+    alert('Please enter your Anthropic API key first.');
+    return;
+  }
+  localStorage.setItem('sugarscope-api-key', apiKey);
+
   if (!imageBase64) {
     alert('Please upload a sugar sample image first.');
     return;
@@ -948,7 +964,12 @@ Respond ONLY with a valid JSON object in this exact format (no markdown, no expl
   try {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
         max_tokens: 1000,
