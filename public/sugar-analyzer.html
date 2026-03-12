@@ -918,10 +918,103 @@ async function analyze() {
   const origin = document.getElementById('origin').value;
   const notes = document.getElementById('notes').value;
 
-  const prompt = `You are an expert sugar quality inspector with deep knowledge of ICUMSA standards. Analyze this sugar sample image and any provided lab data.
+  // Grade-specific thresholds for lab data validation
+  const gradeSpecs = {
+    'ICUMSA 45':  { pol: [99.80, 99.70], moisture: [0.04, 0.06], ash: [0.04, 0.06], rs: [0.05, 0.08] },
+    'ICUMSA 100': { pol: [99.70, 99.50], moisture: [0.05, 0.08], ash: [0.05, 0.08], rs: [0.05, 0.08] },
+    'ICUMSA 150': { pol: [99.50, 99.30], moisture: [0.10, 0.15], ash: [0.10, 0.15], rs: [0.10, 0.15] },
+    'ICUMSA 600': { pol: [99.00, 97.00], moisture: [0.15, 0.25], ash: [0.15, 0.25], rs: [0.10, 0.15] },
+    'ICUMSA 800': { pol: [97.80, 96.00], moisture: [0.15, 0.30], ash: [0.15, 0.25], rs: [0.10, 0.15] },
+    'ICUMSA 1200': { pol: [97.80, 96.00], moisture: [0.15, 0.30], ash: [0.15, 0.25], rs: [0.10, 0.15] },
+  };
+  const spec = gradeSpecs[declaredGrade] || gradeSpecs['ICUMSA 45'];
 
+  function labStatus(val, thresholds) {
+    if (!val) return 'unknown';
+    const v = parseFloat(val);
+    // For pol, higher is better (>=). For others, lower is better (<=).
+    return null; // computed in prompt context below
+  }
+
+  const polStatus = pol ? (parseFloat(pol) >= spec.pol[0] ? 'ok' : parseFloat(pol) >= spec.pol[1] ? 'warn' : 'fail') : 'unknown';
+  const moistureStatus = moisture ? (parseFloat(moisture) <= spec.moisture[0] ? 'ok' : parseFloat(moisture) <= spec.moisture[1] ? 'warn' : 'fail') : 'unknown';
+  const ashStatus = ash ? (parseFloat(ash) <= spec.ash[0] ? 'ok' : parseFloat(ash) <= spec.ash[1] ? 'warn' : 'fail') : 'unknown';
+  const rsStatus = rs ? (parseFloat(rs) <= spec.rs[0] ? 'ok' : parseFloat(rs) <= spec.rs[1] ? 'warn' : 'fail') : 'unknown';
+
+  const prompt = `You are a senior sugar commodity inspector with 20+ years of experience in ICUMSA grading, physical inspection, and fraud detection for international sugar trade. You have deep expertise in visual crystal analysis, COA interpretation, and origin-specific quality patterns.
+
+=== ICUMSA GRADE REFERENCE (use these exact specs for grading) ===
+
+ICUMSA 45 — Premium Refined White:
+  Color: max 45 IU (brilliant sparkling white)
+  Pol: min 99.80°Z | Moisture: max 0.04% | Ash: max 0.04% | RS: max 0.05% | SO2: max 20 ppm
+  Crystal size: 0.4-0.8 mm fine cubic | Must be 100% dry, free-flowing
+  Visual: Brilliant white with strong sparkle/glitter under light. No cream, yellow, or off-white tint whatsoever.
+  Dissolved (10% in distilled water): Crystal clear, colorless — indistinguishable from pure water.
+
+ICUMSA 100 — Refined White:
+  Color: max 100 IU (white, very faint off-white possible)
+  Pol: min 99.70°Z | Moisture: max 0.05% | Ash: max 0.05% | RS: max 0.05% | SO2: max 20 ppm
+  Crystal size: 0.6-0.9 mm | 100% dry, free-flowing
+  Visual: White, marginally less brilliant than 45. Very slight off-white only visible side-by-side with 45.
+  Dissolved: Nearly colorless, very faint straw tint barely perceptible in deep vessel.
+
+ICUMSA 150 — Standard White:
+  Color: max 150 IU (off-white to light cream)
+  Pol: min 99.50°Z | Moisture: max 0.10% | Ash: max 0.10% | RS: max 0.10% | SO2: max 70 ppm
+  Crystal size: 0.6-1.5 mm | 100% dry, free-flowing
+  Visual: Perceptible cream/off-white tint. Moderate sparkle, lacks the brilliant glitter of 45.
+  Dissolved: Noticeable faint straw/amber tint visible to naked eye.
+
+ICUMSA 600 — Raw/Brown:
+  Color: max 600 IU (light golden brown)
+  Pol: min 97.0-99.0°Z | Moisture: max 0.15% | Ash: max 0.15% | RS: max 0.10%
+  Crystal size: 0.6 mm medium | 95% dry, free-flowing
+  Visual: Light golden brown. Rougher crystal texture. Low sparkle, semi-glossy.
+  Dissolved: Distinctly amber/golden.
+
+ICUMSA 800 — VHP Raw:
+  Color: max 800 IU (brown)
+  Pol: min 97.80°Z | Moisture: max 0.15% | Ash: max 0.15% | RS: max 0.10%
+  Crystal size: 0.6-1.0 mm | 95-97% dry
+  Visual: Brown with visible molasses coating. Semi-matte appearance.
+
+ICUMSA 1200+ — VHP/VVHP Raw:
+  Color: 1200-1800 IU (dark brown)
+  Pol: min 97.80°Z (VHP: 99.0-99.5%) | Moisture: max 0.15% | Ash: max 0.15%
+  Crystal size: 1.0-1.5 mm | Coarse, rough surfaces
+  Visual: Dark brown, matte finish. Visible molasses coating. Dark amber/brown dissolved.
+
+=== FRAUD & MISLABELING DETECTION ===
+Watch for these red flags and ALWAYS flag them:
+- ICUMSA 150 sold as 45: Look for cream tint, duller sparkle, straw-colored dissolved solution
+- Mixed-grade batches: Inconsistent crystal sizes (multiple populations), color variation within sample
+- Reprocessed/rebagged sugar: Broken/fragmented crystals, excess sugar dust, moisture pockets in otherwise dry batch, non-uniform crystal damage
+- If declared grade is 45 but visual shows ANY cream/off-white tone → WARN or FAIL with fraud flag
+- If crystal sizes vary significantly across the sample → flag possible blending
+
+=== ORIGIN-SPECIFIC QUALITY PROFILES ===
+${origin ? `Origin declared: ${origin}. Apply these origin-specific expectations:
+- Brazil: Highest consistency batch-to-batch. ICUMSA 45 should be sparkling white. VHP typically 1200-1800 IU. Lower moisture than competing origins.
+- Thailand: Crystal size typically 0.4-0.8mm. Strong quality consistency from major mills (Mitr Phol, Khon Kaen).
+- India: Uses S30/M30 grading (S=small ~1.0-1.2mm, M=medium). Color 100-150 ICUMSA typical. More mill-to-mill variation than Brazil.
+- Guatemala: Consistent quality from large mills (Grupo Pantaleón). Both raw and refined. Low carbon footprint production.
+- Australia: Predominantly raw sugar exporter. Straw-colored free-flowing raw. 95%+ from Queensland.
+- Colombia: Good quality refined, lower volumes than Brazil. ICUMSA 45, 100, 150 for export.
+If origin doesn't match expected visual quality, flag the discrepancy.` : 'Origin: Not provided — cannot apply origin-specific validation.'}
+
+=== STORAGE & TRANSPORT DEGRADATION ===
+Flag any of these visual signs:
+- Clumping/caking → moisture exposure (humidity >70% or temperature cycling)
+- Yellowing of white sugar → temperature degradation (color increases ~3x per 10°C rise) or humidity damage
+- Sticky/tacky crystals → excess moisture or molasses residue
+- Brown spots/darkening → possible early caramelization from heat exposure
+- Musty or sour odor (if noted) → IMMEDIATE REJECT — indicates fermentation/microbial activity
+- Any insects, rodent evidence, webbing, or foreign particles → IMMEDIATE REJECT
+
+=== SAMPLE DATA ===
 DECLARED GRADE: ${declaredGrade || 'Not declared'}
-KNOWN LAB DATA:
+LAB DATA:
 - Polarization: ${pol ? pol + '°Z' : 'Not provided'}
 - Moisture: ${moisture ? moisture + '%' : 'Not provided'}
 - Ash Content: ${ash ? ash + '%' : 'Not provided'}
@@ -929,36 +1022,38 @@ KNOWN LAB DATA:
 - Origin: ${origin || 'Not provided'}
 - Inspector Notes: ${notes || 'None'}
 
-Analyze the image carefully for:
-1. Crystal color (brilliant white, off-white, cream, golden, brown, etc.)
-2. Crystal size and uniformity
-3. Crystal clarity and sparkle
-4. Visible surface film or coating
-5. Any foreign matter, clumping, or discoloration
-6. Consistency with declared grade
+=== ANALYSIS INSTRUCTIONS ===
+Examine the image with the precision of a physical commodity inspector at a port warehouse. Assess:
+1. Crystal color — compare against the grade benchmarks above. Is it consistent with the declared grade?
+2. Crystal size and uniformity — are crystals uniform or mixed? What size range?
+3. Crystal clarity and sparkle — brilliant, moderate, dull, or matte?
+4. Surface condition — any film, coating, stickiness, or dust?
+5. Foreign matter — any contamination, discoloration spots, clumping?
+6. Degradation signs — yellowing, caking, moisture damage?
+7. Fraud indicators — does the visual match the declared grade? Any signs of blending or mislabeling?
 
-Respond ONLY with a valid JSON object in this exact format (no markdown, no explanation):
+If lab data is provided, cross-reference it against the spec table for the declared (or estimated) grade. Flag any parameter that fails or is borderline.
+
+Respond ONLY with a valid JSON object (no markdown, no explanation):
 {
   "estimated_icumsa": "45" or "100" or "150" or "400" or "600" or "800" or "1200",
-  "grade_name": "e.g. ICUMSA 45 Refined White",
+  "grade_name": "e.g. ICUMSA 45 Premium Refined White",
   "verdict": "PASS" or "WARN" or "FAIL",
-  "verdict_detail": "e.g. Consistent with declared grade" or "Borderline — recommend lab retest" or "Inconsistent with declared grade",
+  "verdict_detail": "Specific reason — e.g. Visual consistent with ICUMSA 45, all lab parameters within spec",
   "visual_confidence": 85,
   "grade_match_confidence": 70,
-  "color_assessment": "e.g. Brilliant white with strong sparkle",
-  "crystal_assessment": "e.g. Fine-medium, uniform cubic crystals",
-  "surface_assessment": "e.g. No visible film or coating",
+  "color_assessment": "Detailed color description referencing ICUMSA benchmarks",
+  "crystal_assessment": "Crystal size, shape, uniformity assessment with estimated size range",
+  "surface_assessment": "Surface condition, film, coating, dust, stickiness",
   "flags": [
-    {"status": "ok", "text": "Color consistent with ICUMSA 45"},
-    {"status": "warn", "text": "Slight cream tone near top — possible moisture exposure"},
-    {"status": "ok", "text": "Crystal shape and size appropriate"},
-    {"status": "ok", "text": "No visible foreign matter"}
+    {"status": "ok|warn|fail", "text": "Specific inspection finding with reasoning"},
+    {"status": "ok|warn|fail", "text": "Each flag should be a distinct observation"}
   ],
-  "pol_status": "${pol ? (parseFloat(pol) >= 99.8 ? 'ok' : parseFloat(pol) >= 99.5 ? 'warn' : 'fail') : 'unknown'}",
-  "moisture_status": "${moisture ? (parseFloat(moisture) <= 0.04 ? 'ok' : parseFloat(moisture) <= 0.06 ? 'warn' : 'fail') : 'unknown'}",
-  "ash_status": "${ash ? (parseFloat(ash) <= 0.04 ? 'ok' : parseFloat(ash) <= 0.10 ? 'warn' : 'fail') : 'unknown'}",
-  "rs_status": "${rs ? (parseFloat(rs) <= 0.04 ? 'ok' : parseFloat(rs) <= 0.10 ? 'warn' : 'fail') : 'unknown'}",
-  "narrative": "2-3 sentence professional inspector summary of the sample, combining visual and lab findings, with a clear recommendation."
+  "pol_status": "${polStatus}",
+  "moisture_status": "${moistureStatus}",
+  "ash_status": "${ashStatus}",
+  "rs_status": "${rsStatus}",
+  "narrative": "3-4 sentence professional inspector report. State estimated grade, key visual findings, lab data assessment (if provided), origin-specific notes (if applicable), and clear recommendation (accept, accept with conditions, retest, or reject)."
 }`;
 
   try {
@@ -972,7 +1067,7 @@ Respond ONLY with a valid JSON object in this exact format (no markdown, no expl
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 1000,
+        max_tokens: 1500,
         messages: [{
           role: 'user',
           content: [
