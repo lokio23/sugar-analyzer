@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SugarScope — Quality Analyzer</title>
 <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow+Condensed:wght@300;400;600;700;900&family=Barlow:wght@300;400;500&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
 <style>
   :root {
     --bg: #0a0c0e;
@@ -683,6 +684,30 @@
 
   .reset-btn:hover { border-color: var(--accent2); color: var(--accent); }
 
+  .export-btn {
+    background: var(--accent);
+    color: var(--bg);
+    border: none;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    padding: 10px 20px;
+    cursor: pointer;
+    margin-top: 20px;
+    margin-right: 12px;
+    transition: all 0.2s;
+    font-weight: 700;
+  }
+  .export-btn:hover { background: #00f5b0; }
+
+  .results-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 20px;
+  }
+
   /* RESPONSIVE */
   @media (max-width: 700px) {
     .main-grid { grid-template-columns: 1fr; }
@@ -841,7 +866,10 @@
         <div id="narrative-text"></div>
       </div>
 
-      <button class="reset-btn" onclick="reset()">↺ &nbsp; New Analysis</button>
+      <div class="results-actions">
+        <button class="export-btn" onclick="exportPDF()">⬡ &nbsp; Export PDF</button>
+        <button class="reset-btn" onclick="reset()">↺ &nbsp; New Analysis</button>
+      </div>
     </div>
 
   </div><!-- /main-grid -->
@@ -850,6 +878,8 @@
 <script>
 let imageBase64 = null;
 let imageType = null;
+let lastResult = null;
+let lastInputs = null;
 
 // Restore saved API key
 const savedKey = localStorage.getItem('sugarscope-api-key');
@@ -1103,6 +1133,8 @@ Respond ONLY with a valid JSON object (no markdown, no explanation):
 }
 
 function renderResults(r, inputs) {
+  lastResult = r;
+  lastInputs = inputs;
   document.getElementById('scanning-state').classList.remove('visible');
 
   // Grade circle
@@ -1199,9 +1231,242 @@ function renderResults(r, inputs) {
   btn.innerHTML = '<div class="btn-scan"></div>⬡ &nbsp; Run Quality Analysis';
 }
 
+function exportPDF() {
+  if (!lastResult || !imageBase64) return alert('No analysis to export.');
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF('p', 'mm', 'letter');
+  const pw = 216; // letter width mm
+  const margin = 18;
+  const cw = pw - margin * 2; // content width
+  let y = margin;
+
+  const r = lastResult;
+  const inp = lastInputs;
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+  const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+
+  // --- HEADER ---
+  doc.setFillColor(10, 12, 14);
+  doc.rect(0, 0, pw, 32, 'F');
+  doc.setTextColor(0, 229, 160);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(18);
+  doc.text('SUGARSCOPE', margin, 14);
+  doc.setFontSize(9);
+  doc.setTextColor(160, 170, 180);
+  doc.text('Inspection Report', margin, 20);
+  doc.text('Erber Studio LLC', margin, 25);
+  doc.setTextColor(200, 210, 220);
+  doc.text(`${dateStr}  |  ${timeStr}`, pw - margin, 14, { align: 'right' });
+  y = 40;
+
+  // --- SAMPLE IMAGE ---
+  if (imageBase64) {
+    const imgFormat = imageType === 'image/png' ? 'PNG' : 'JPEG';
+    const imgW = 65;
+    const imgH = 50;
+    try {
+      doc.addImage('data:' + imageType + ';base64,' + imageBase64, imgFormat, margin, y, imgW, imgH);
+    } catch(e) {
+      doc.setTextColor(150, 150, 150);
+      doc.setFontSize(9);
+      doc.text('[Image could not be embedded]', margin, y + 25);
+    }
+
+    // --- GRADE & VERDICT (right of image) ---
+    const infoX = margin + 72;
+    doc.setTextColor(30, 30, 30);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(36);
+    doc.text(String(r.estimated_icumsa), infoX, y + 14);
+    doc.setFontSize(9);
+    doc.setTextColor(100, 100, 100);
+    doc.text('ICUMSA IU', infoX, y + 20);
+
+    doc.setFontSize(11);
+    doc.setTextColor(40, 40, 40);
+    doc.text(r.grade_name || '', infoX, y + 28);
+
+    // Verdict badge
+    const vColors = { PASS: [16, 185, 129], WARN: [245, 166, 35], FAIL: [255, 71, 87] };
+    const vc = vColors[r.verdict] || [100, 100, 100];
+    doc.setFillColor(...vc);
+    doc.roundedRect(infoX, y + 31, 18, 6, 1, 1, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'bold');
+    doc.text(r.verdict, infoX + 9, y + 35.5, { align: 'center' });
+
+    doc.setTextColor(80, 80, 80);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    const detailLines = doc.splitTextToSize(r.verdict_detail || '', cw - 75);
+    doc.text(detailLines, infoX, y + 42);
+
+    y += imgH + 8;
+  }
+
+  // --- CONFIDENCE ---
+  doc.setDrawColor(220, 220, 220);
+  doc.line(margin, y, pw - margin, y);
+  y += 6;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.setTextColor(100, 110, 120);
+  doc.text('CONFIDENCE', margin, y);
+  y += 5;
+
+  const drawBar = (label, pct, x, barY) => {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(60, 60, 60);
+    doc.text(label, x, barY);
+    const barX = x + 40;
+    const barW = 60;
+    doc.setFillColor(230, 230, 230);
+    doc.roundedRect(barX, barY - 3, barW, 4, 1, 1, 'F');
+    const fillW = barW * (pct / 100);
+    doc.setFillColor(0, 229, 160);
+    doc.roundedRect(barX, barY - 3, fillW, 4, 1, 1, 'F');
+    doc.setTextColor(40, 40, 40);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`${pct}%`, barX + barW + 3, barY);
+  };
+
+  drawBar('Visual Confidence', r.visual_confidence, margin, y);
+  drawBar('Grade Match', r.grade_match_confidence, margin + 90, y);
+  y += 8;
+
+  if (inp.declaredGrade) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(100, 100, 100);
+    doc.text(`Declared Grade: ${inp.declaredGrade}`, margin, y);
+    y += 5;
+  }
+
+  // --- LAB METRICS TABLE ---
+  doc.setDrawColor(220, 220, 220);
+  doc.line(margin, y, pw - margin, y);
+  y += 6;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.setTextColor(100, 110, 120);
+  doc.text('LAB METRICS', margin, y);
+  y += 5;
+
+  // Table header
+  doc.setFillColor(245, 245, 245);
+  doc.rect(margin, y - 3, cw, 7, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7);
+  doc.setTextColor(80, 80, 80);
+  const cols = [margin + 2, margin + 45, margin + 85, margin + 120];
+  doc.text('PARAMETER', cols[0], y + 1);
+  doc.text('VALUE', cols[1], y + 1);
+  doc.text('STATUS', cols[2], y + 1);
+  doc.text('BENCHMARK', cols[3], y + 1);
+  y += 7;
+
+  const metrics = [
+    { name: 'Color (Visual)', value: r.estimated_icumsa + ' IU', status: r.verdict === 'PASS' ? 'OK' : r.verdict === 'WARN' ? 'WARN' : 'FAIL', bench: '≤45 (ICUMSA 45)' },
+    { name: 'Polarization', value: inp.pol ? inp.pol + ' °Z' : '—', status: inp.pol ? (r.pol_status || '').toUpperCase() : '—', bench: '≥99.8° (ICUMSA 45)' },
+    { name: 'Moisture', value: inp.moisture ? inp.moisture + '%' : '—', status: inp.moisture ? (r.moisture_status || '').toUpperCase() : '—', bench: '≤0.04% (ICUMSA 45)' },
+    { name: 'Ash Content', value: inp.ash ? inp.ash + '%' : '—', status: inp.ash ? (r.ash_status || '').toUpperCase() : '—', bench: '≤0.04% (ICUMSA 45)' },
+  ];
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  metrics.forEach(m => {
+    doc.setTextColor(40, 40, 40);
+    doc.text(m.name, cols[0], y);
+    doc.text(m.value, cols[1], y);
+    const sColors = { OK: [16, 185, 129], WARN: [245, 166, 35], FAIL: [255, 71, 87] };
+    const sc = sColors[m.status] || [120, 120, 120];
+    doc.setTextColor(...sc);
+    doc.setFont('helvetica', 'bold');
+    doc.text(m.status, cols[2], y);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(120, 120, 120);
+    doc.text(m.bench, cols[3], y);
+    y += 6;
+  });
+
+  // --- INSPECTION FLAGS ---
+  y += 2;
+  doc.setDrawColor(220, 220, 220);
+  doc.line(margin, y, pw - margin, y);
+  y += 6;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.setTextColor(100, 110, 120);
+  doc.text('INSPECTION FLAGS', margin, y);
+  y += 5;
+
+  const allFlags = [
+    ...r.flags,
+    { status: r.color_assessment ? 'ok' : 'warn', text: 'Color: ' + (r.color_assessment || 'Unassessed') },
+    { status: 'ok', text: 'Crystal: ' + (r.crystal_assessment || 'Unassessed') },
+  ];
+
+  doc.setFontSize(7.5);
+  allFlags.forEach(f => {
+    if (y > 255) { doc.addPage(); y = margin; }
+    const fc = { ok: [16, 185, 129], warn: [245, 166, 35], fail: [255, 71, 87] };
+    const dotC = fc[f.status] || [120, 120, 120];
+    doc.setFillColor(...dotC);
+    doc.circle(margin + 2, y - 1.2, 1.5, 'F');
+    doc.setTextColor(50, 50, 50);
+    doc.setFont('helvetica', 'normal');
+    const flagLines = doc.splitTextToSize(f.text, cw - 10);
+    doc.text(flagLines, margin + 7, y);
+    y += flagLines.length * 4 + 2;
+  });
+
+  // --- NARRATIVE ---
+  y += 2;
+  if (y > 240) { doc.addPage(); y = margin; }
+  doc.setDrawColor(220, 220, 220);
+  doc.line(margin, y, pw - margin, y);
+  y += 6;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.setTextColor(100, 110, 120);
+  doc.text('INSPECTOR NOTES', margin, y);
+  y += 5;
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.setTextColor(40, 40, 40);
+  const narLines = doc.splitTextToSize(r.narrative || '', cw);
+  doc.text(narLines, margin, y);
+  y += narLines.length * 4.5 + 5;
+
+  // --- FOOTER ---
+  const pages = doc.internal.getNumberOfPages();
+  for (let i = 1; i <= pages; i++) {
+    doc.setPage(i);
+    doc.setDrawColor(200, 200, 200);
+    doc.line(margin, 265, pw - margin, 265);
+    doc.setFontSize(7);
+    doc.setTextColor(150, 150, 150);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Generated by SugarScope — Erber Studio LLC', margin, 270);
+    doc.text(`Page ${i} of ${pages}`, pw - margin, 270, { align: 'right' });
+  }
+
+  // Save
+  const ts = now.toISOString().slice(0, 16).replace(/[-:T]/g, m => m === 'T' ? '-' : m === ':' ? '' : m);
+  doc.save(`SugarScope-Report-${ts}.pdf`);
+}
+
 function reset() {
   imageBase64 = null;
   imageType = null;
+  lastResult = null;
+  lastInputs = null;
   document.getElementById('preview-img').style.display = 'none';
   document.getElementById('preview-overlay').style.display = 'none';
   document.getElementById('upload-zone').classList.remove('has-image');
